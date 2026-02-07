@@ -41,7 +41,7 @@ def get_main_keyboard(user_id: int):
                 ],
             ],
             resize_keyboard=True,
-            input_field_placeholder="Админ-действия..."
+            input_field_placeholder=f"Ты в панели админа!"
         )
 
     else:
@@ -65,9 +65,25 @@ def get_main_keyboard(user_id: int):
             ],
 
             resize_keyboard=True,
-            input_fiеld_placeholder="Что вам интереует?",
+            input_fiеld_placeholder=f"Что интересует?",
         )
 
 
+cancel_back = ReplyKeyboardMarkup(
+            keyboard=[
+                # Команды отмены и назад
+                [
+                    KeyboardButton(text="❌ Отмена"),
+                    KeyboardButton(text="🔙 Назад"),
+                ],
+            
+            ],
+
+            resize_keyboard=True,
+        )
+
 delete_keyboard = ReplyKeyboardRemove()
+
+
+
 
