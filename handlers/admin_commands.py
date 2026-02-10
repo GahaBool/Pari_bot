@@ -11,16 +11,25 @@ admin_router = Router()
 admin_router.message.filter(ChatTypeFilter(["private"]), IsAdmin())
 
 class CreateEvent(StatesGroup):
+    #Состояние создание события
     waiting_for_title = State()          # Ждем название
     waiting_for_description = State()    # Ждем описание
 
-#<------------------------Меню админа и обычное меню--------------------------->
-@admin_router.message(F.text == "📱 Главное меню")
-@admin_router.message(Command('menu'))
-async def admin_command(message: types.Message):
-    # Простая проверка
-    await message.answer(f"👋 Привет Админ!", reply_markup=reply.get_main_keyboard(message.from_user.id))
-#<------------------------------------------------------------------------------>
+class DeleteEvent(StatesGroup):
+    #Состояние закрытия события
+    waiting_for_id = State()    #Ожидание ID
+
+class AddCoins(StatesGroup):
+    #Начисление балоов пользователю
+    waiting_for_user_id = State() #Ожидание ID
+    waiting_for_coins = State() #Ожидание колличество баллов
+
+class AddUsers(StatesGroup):
+    waiting_for_add_user = State() #Ожидание ID
+
+class DeleteUsers(StatesGroup):
+    waiting_for_delete_user = State() #Ожидание ID
+    
 
 #<------------------------Панель отмены и назад--------------------------->
 @admin_router.message(Command("cancellation"))
@@ -99,39 +108,119 @@ async def process_description(message: types.Message, state: FSMContext):
 
 #<------------------------------------------------------------------------------>
 
+#<------------------------Завершение события--------------------------->
 # /closeevent - Завершить событие
+@admin_router.message(F.text == "📝 Завершить событие")
 @admin_router.message(Command("closeevent"))
-async def close_event_command(message: types.Message, command: CommandObject):
-    if command.args:
-        await message.answer(f"📝 Завершаю событие #{command.args}")
-    else:
-        await message.answer("❌ Укажите ID события: /closeevent 123", reply_markup=reply.reply.delete_keyboard)
-
-# /addcoins - Начислить Ё-баллы  
-@admin_router.message(Command("addcoins"))
-async def add_coins_command(message: types.Message, command: CommandObject):
-    if command.args:
-        await message.answer(f"💎 Начисляю баллы: {command.args}", reply_markup=reply.reply.delete_keyboard)
-    else:
-        await message.answer("❌ Формат: /addcoins user_id сумма" , reply_markup=reply.reply.delete_keyboard)
-
-# /statsall - Статистика системы
-@admin_router.message(Command("statsall"))
-async def stats_all_command(message: types.Message):
-    await message.answer("📊 Статистика загружается...", reply_markup=reply.reply.delete_keyboard)
-
-# /users - Список пользователей
-@admin_router.message(Command("users"))
-async def users_command(message: types.Message):
-    await message.answer("👥 Список пользователей загружается...", reply_markup=reply.delete_keyboard)
-# Простой текст как запасной вариант
-@admin_router.message(F.text == "Админ")
-async def admin_text_command(message: types.Message):
+async def close_event_command(message: types.Message, state: FSMContext):
     await message.answer(
-        "Админ команды:\n"
-        "/addevent - Создать событие\n"
-        "/closeevent - Завершить событие\n"  
-        "/addcoins - Начислить баллы\n"
-        "/statsall - Статистика\n"
-        "/users - Пользователи", reply_markup=reply.reply.delete_keyboard
-    )
+        "📝 <b>Завершить событие</b>\n\n"
+        "Введите ID события:",
+        reply_markup=reply.cancel_back)
+    await state.set_state(DeleteEvent.waiting_for_id)
+
+@admin_router.message(DeleteEvent.waiting_for_id)
+async def delete_event_for_id(message: types.Message, state: FSMContext):
+
+    if not message.text or not message.text.isdigit():
+        await message.answer("❌ Необходимо ввести ID (только цифры)")
+        return
+    
+    await state.update_data(event_id=message.text)
+    
+    event_id = int(message.text)
+    await message.answer(f"✅ Событие #{event_id} удалено!", reply_markup=reply.get_main_keyboard(message.from_user.id))
+    # Очищаем состояние
+    await state.clear()
+
+#<------------------------------------------------------------------------------>
+
+#<------------------------Начисление баллов--------------------------->
+# /addcoins - Начислить Ё-баллы  
+@admin_router.message(F.text == "💎 Начислить Ё-баллы")
+@admin_router.message(Command("addcoins"))
+async def add_coins_command(message: types.Message, state: FSMContext):
+    await message.answer(
+        "💎  <b>Начислить Ё-баллы</b>\n\n"
+        "Введите ID пользователя:",
+        reply_markup=reply.cancel_back)
+    await state.set_state(AddCoins.waiting_for_user_id)
+
+@admin_router.message(AddCoins.waiting_for_user_id)
+async def add_coins_for_id(message: types.Message, state: FSMContext):
+    if not message.text or not message.text.isdigit():
+        await message.answer("❌ Необходимо ввести ID (только цифры)")
+        return
+    
+    await state.update_data(user_id=message.text)
+    await message.answer("Введите колличество Ё-баллов(В формате: 1000):", reply_markup=reply.cancel_back)
+    await state.set_state(AddCoins.waiting_for_coins)
+
+@admin_router.message(AddCoins.waiting_for_coins)
+async def add_count_coins(message: types.Message, state: FSMContext):
+    if not message.text or not message.text.isdigit():
+        await message.answer("❌ Необходимо ввести только сумму балов (только цифры)")
+        return
+
+    await state.update_data(coins_count=message.text)
+
+    count_coins = message.text
+    await message.answer(f"{count_coins} Баллы успешно добавлены!", reply_markup=reply.get_main_keyboard(message.from_user.id))
+    
+    # Очищаем состояние
+    await state.clear()
+
+#<------------------------------------------------------------------------------>
+
+#<------------------------Добавление/Удаление пользователей--------------------------->
+# /users - Добавление пользователя
+@admin_router.message(F.text == "👤➕ Добавить пользователя")
+@admin_router.message(Command("add_user"))
+async def add_users_command(message: types.Message, state: FSMContext):
+    await message.answer(
+        "👤➕ <b>Добавить пользователя</b>\n\n"
+        "Введите ID пользователя которого необходимо добавить:",
+        reply_markup=reply.cancel_back)
+    await state.set_state(AddUsers.waiting_for_add_user)
+
+@admin_router.message(AddUsers.waiting_for_add_user)
+async def add_event_for_id(message: types.Message, state: FSMContext):
+
+    if not message.text or not message.text.isdigit():
+        await message.answer("❌ Необходимо ввести ID пользователя (только цифры)")
+        return
+    
+    await state.update_data(user_id=message.text)
+    
+    user_id = int(message.text)
+    await message.answer(f"✅ Пользователь с ID: {user_id} добавлен!", reply_markup=reply.get_main_keyboard(message.from_user.id))
+    # Очищаем состояние
+    await state.clear()
+
+
+# Удаление пользвателя 
+@admin_router.message(F.text == "👤➖ Удалить пользователя")
+@admin_router.message(Command("ban_user"))
+async def delete_users_command(message: types.Message, state: FSMContext):
+    await message.answer(
+        "👤➕ <b>Добавить пользователя</b>\n\n"
+        "Введите ID пользователя которого необходимо добавить:",
+        reply_markup=reply.cancel_back)
+    await state.set_state(DeleteUsers.waiting_for_delete_user)
+
+@admin_router.message(DeleteUsers.waiting_for_delete_user)
+async def delete_user_for_id(message: types.Message, state: FSMContext):
+
+    if not message.text or not message.text.isdigit():
+        await message.answer("❌ Необходимо ввести ID пользователя (только цифры)")
+        return
+    
+    await state.update_data(user_id=message.text)
+    
+    user_id = int(message.text)
+    await message.answer(f"✅ Пользователь с ID: {user_id} удален!", reply_markup=reply.get_main_keyboard(message.from_user.id))
+    # Очищаем состояние
+    await state.clear()
+#<------------------------------------------------------------------------------>
+
+
